@@ -4,20 +4,26 @@ This public repository distributes native Chutoro delivery binaries. Application
 source remains in the private `chutoroAI/chutoro` repository. No Python, pip, or
 Go installation is required on end-user computers.
 
-Chutoro's MCP connection offers setup in Codex. After the user consents, Codex
-downloads the matching release and verifies its signed build provenance **before
-executing it**. A trusted GitHub CLI with `gh attestation verify` is required for
-this bootstrap. Verification must match all of:
+Chutoro's MCP connection offers setup in Codex. After user consent, Codex
+downloads the matching release and compares its SHA-256 with the approved hash
+supplied through the trusted Hub MCP connection **before executing it**.
 
-- Repository: `chutoroAI/chutoro-releases`
-- Signer workflow: `chutoroAI/chutoro-releases/.github/workflows/delivery-release.yml`
-- Source ref: `refs/tags/delivery-vVERSION`, where VERSION is the selected release
-- GitHub-hosted runner (reject self-hosted attestations)
+Verification uses existing OS tools: `shasum -a 256` on macOS, `sha256sum` on
+Linux, or PowerShell `Get-FileHash -Algorithm SHA256 -LiteralPath` on Windows.
+The full 64-character result must match (case-insensitive). No GitHub CLI is
+required on user machines. Stop on errors, missing tools or a mismatch; do not
+run a downloaded verifier script or disable OS security controls.
 
-Use the exact verification arguments supplied by the Hub. A checksum from a
-download server alone is not proof of publisher identity. Do not execute a
-download if verification fails. Checksums accompanying a release are for file
-inventory; signed provenance is the authenticity check.
+The trusted expected hash comes from the Hub's operator-approved manifest,
+not from a checksum downloaded alongside the binary. This protects against
+corruption or substituted release downloads while **trusting the Hub**. It is
+not independent publisher-signature verification and does not protect against a
+compromised Hub or a malicious approved build.
+
+GitHub-signed build attestations remain available for publisher audits. They are
+not an end-user installation prerequisite. The native install command takes
+`--sha256` with the same Hub-approved hash and rechecks the bytes before staging;
+self-verification alone cannot establish bootstrap trust.
 
 ## Supported targets
 
@@ -57,7 +63,10 @@ tests must use synthetic fixtures, never private customer data.
 
 Successful builds create a **draft** release. Verify all six assets and their
 attestations, complete native installation/uninstallation acceptance tests, then
-publish the release. Configure `HUB_DELIVERY_VERSION=MAJOR.MINOR.PATCH` on the Hub
-only after publication. A missing release configuration disables enrollment
-offers. There are no automatic updates; upgrades require another verified binary
+publish the release. The draft includes `release-manifest.json`, generated from
+all six final binaries, and `SHA256SUMS`. Review the manifest against the built
+artifacts and audit provenance, then explicitly pin its complete JSON as
+`HUB_DELIVERY_MANIFEST` and its version as `HUB_DELIVERY_VERSION` on the Hub.
+Do not fetch or refresh this manifest automatically at installation time.
+Missing, incomplete or version-mismatched hashes disable enrollment offers. There are no automatic updates; upgrades require another verified binary
 and reuse the existing enrollment.
