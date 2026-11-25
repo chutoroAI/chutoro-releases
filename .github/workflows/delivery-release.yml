@@ -1,0 +1,100 @@
+name: Native delivery release
+
+on:
+  push:
+    tags: ['delivery-v*']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: daemon
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: chutoroAI/chutoro
+          ref: ${{ github.ref_name }}
+          token: ${{ secrets.DELIVERY_SOURCE_TOKEN }}
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: daemon/go.mod
+          cache: false # Never put private source build caches in the public repository.
+      - run: go mod verify
+      - run: go test -race ./...
+      - run: go vet ./...
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      matrix:
+        os: [darwin, linux, windows]
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: chutoroAI/chutoro
+          ref: ${{ github.ref_name }}
+          token: ${{ secrets.DELIVERY_SOURCE_TOKEN }}
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: daemon/go.mod
+          cache: false # Never put private source build caches in the public repository.
+      - name: Build versioned binary
+        working-directory: daemon
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#delivery-v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          suffix=""
+          if [ "$GOOS" = windows ]; then suffix=.exe; fi
+          go mod verify
+          go build -trimpath -ldflags="-s -w -X main.version=$version" -o "../dist/chutoro-delivery-$version-$GOOS-$GOARCH$suffix" .
+      - name: Sign build provenance with GitHub OIDC
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: dist/*
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: delivery-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  draft-release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: delivery-*
+          path: dist
+          merge-multiple: true
+      - name: Create draft for release review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum dist/* > dist/SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --draft --title "Chutoro delivery ${GITHUB_REF_NAME#delivery-v}" --generate-notes
