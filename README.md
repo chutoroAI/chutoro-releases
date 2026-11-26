@@ -1,12 +1,11 @@
 # Chutoro delivery releases
 
-This public repository distributes native Chutoro delivery binaries. Application
-source remains in the private `chutoroAI/chutoro` repository. No Python, pip, or
-Go installation is required on end-user computers.
+This public repository distributes the native Codex delivery helper and the Claude Code terminal client. Server
+source remains in the private `chutoroAI/chutoro` repository. The Codex helper runs as a native binary. The Claude client uses Python 3 and its standard library.
 
 Chutoro's MCP connection offers setup in Codex. After user consent, Codex
 downloads the matching release and compares its SHA-256 with the approved hash
-supplied through the trusted Hub MCP connection **before executing it**.
+supplied through the trusted Chutoro MCP connection **before executing it**.
 
 Verification uses existing OS tools: `shasum -a 256` on macOS, `sha256sum` on
 Linux, or PowerShell `Get-FileHash -Algorithm SHA256 -LiteralPath` on Windows.
@@ -14,15 +13,15 @@ The full 64-character result must match (case-insensitive). No GitHub CLI is
 required on user machines. Stop on errors, missing tools or a mismatch; do not
 run a downloaded verifier script or disable OS security controls.
 
-The trusted expected hash comes from the Hub's operator-approved manifest,
+The trusted expected hash comes from the operator-approved Chutoro manifest,
 not from a checksum downloaded alongside the binary. This protects against
-corruption or substituted release downloads while **trusting the Hub**. It is
+corruption or substituted release downloads while **trusting Chutoro**. It is
 not independent publisher-signature verification and does not protect against a
-compromised Hub or a malicious approved build.
+compromised Chutoro server or a malicious approved build.
 
 GitHub-signed build attestations remain available for publisher audits. They are
 not an end-user installation prerequisite. The native install command takes
-`--sha256` with the same Hub-approved hash and rechecks the bytes before staging;
+`--sha256` with the same Chutoro-approved hash and rechecks the bytes before staging;
 self-verification alone cannot establish bootstrap trust.
 
 ## Supported targets
@@ -57,16 +56,22 @@ the matching tag in this repository. Both tags should be protected from updates
 and deletion. Disable Actions for untrusted forks and protect workflow changes.
 
 The workflow runs tests on macOS, Linux and Windows, cross-compiles six binaries,
-and signs their build provenance using GitHub OIDC. No source archives or build
-caches are uploaded. Public job logs can contain compiler/test diagnostics;
+and signs their build provenance using GitHub OIDC. The native release workflow uploads only the built artifacts and release metadata. Public job logs can contain compiler/test diagnostics;
 tests must use synthetic fixtures, never private customer data.
 
 Successful builds create a **draft** release. Verify all six assets and their
 attestations, complete native installation/uninstallation acceptance tests, then
 publish the release. The draft includes `release-manifest.json`, generated from
 all six final binaries, and `SHA256SUMS`. Review the manifest against the built
-artifacts and audit provenance, then explicitly pin its complete JSON as
-`HUB_DELIVERY_MANIFEST` and its version as `HUB_DELIVERY_VERSION` on the Hub.
+artifacts and audit provenance, then update `priv/delivery-release.json` in the Hub source and the pinned installer table in `priv/static/SETUP.md` together. The Hub bundles this approved manifest, so normal deployments require no release environment variables.
+
+Operators may override the bundled release by setting both `HUB_DELIVERY_MANIFEST` (complete reviewed JSON) and `HUB_DELIVERY_VERSION`.
 Do not fetch or refresh this manifest automatically at installation time.
-Missing, incomplete or version-mismatched hashes disable enrollment offers. There are no automatic updates; upgrades require another verified binary
+Incomplete or version-mismatched overrides disable enrollment offers; absent overrides use the bundled release. There are no automatic updates; upgrades require another verified binary
 and reuse the existing enrollment.
+
+## Claude Code releases
+
+A `claude-vMAJOR.MINOR.PATCH` tag builds a macOS/Linux client archive from four explicitly listed Python files in the matching private source tag. The archive contains the shell installer, launcher, session hook, and Channels bridge. The client requires Claude Code and Python 3. Its version is independent of the Codex helper.
+
+Sync the Claude workflow and packaging script from `distribution/` to this public repository. Tag the reviewed private source first, then create the matching public tag. The workflow runs the Claude fixtures and creates a draft with the archive and SHA256SUMS. Compare the archive hash with the pin in the Hub's `priv/static/SETUP.md`, verify the extracted client, and publish the release before deploying the guide that references it.
