@@ -3,6 +3,12 @@ name: Claude Code client release
 on:
   push:
     tags: ['claude-v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published version to rebuild and verify against this checkout
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -14,22 +20,46 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          repository: chutoroAI/chutoro
-          ref: ${{ github.ref_name }}
-          token: ${{ secrets.DELIVERY_SOURCE_TOKEN }}
-          persist-credentials: false
-          path: source
-      - run: python3 -m unittest discover -s source/scripts/tests -p 'test_claude*.py'
-      - run: python3 scripts/package_claude.py source dist "${GITHUB_REF_NAME#claude-v}"
+      - name: Package and test public client
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          version="${VERSION:-${GITHUB_REF_NAME#claude-v}}"
+          python3 scripts/package_claude.py . dist "$version"
+          archive="chutoro-claude-$version"
+          tar -xf "dist/$archive.tar" -C "$RUNNER_TEMP"
+          client="$RUNNER_TEMP/$archive"
+          python3 -m compileall -q "$client"
+          export HOME="$RUNNER_TEMP/test-home"
+          mkdir -p "$HOME/bin"
+          printf '#!/bin/sh\nprintf "%%s\n" "$@"\n' > "$HOME/bin/claude"
+          chmod +x "$HOME/bin/claude"
+          export PATH="$HOME/bin:$PATH"
+          python3 "$client/claude_install.py" --shell bash
+          source "$HOME/.bashrc"
+          export CHUTORO_MCP_URL=https://example.invalid/mcp/test
+          claude --model sonnet > "$HOME/arguments"
+          grep -Fx 'server:chutoro' "$HOME/arguments"
+          python3 "$client/claude_install.py" --shell bash --remove
+      - name: Compare with published assets
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release download "claude-v$VERSION" --dir published
+          cmp "dist/chutoro-claude-$VERSION.tar" "published/chutoro-claude-$VERSION.tar"
+          cmp dist/SHA256SUMS published/SHA256SUMS
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name == 'push'
         with:
           name: claude-client
           path: dist/*
           if-no-files-found: error
 
   draft-release:
+    if: github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
     permissions:

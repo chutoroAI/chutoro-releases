@@ -72,6 +72,8 @@ and reuse the existing enrollment.
 
 ## Claude Code releases
 
-A `claude-vMAJOR.MINOR.PATCH` tag builds a macOS/Linux client archive from four explicitly listed Python files in the matching private source tag. The archive contains the shell installer, launcher, session hook, and Channels bridge. The client requires Claude Code and Python 3. Its version is independent of the Codex helper.
+A `claude-vMAJOR.MINOR.PATCH` tag builds a macOS/Linux client archive from four explicitly listed Python files in the public tag’s `scripts/` directory. The archive contains the shell installer, launcher, session hook, and Channels bridge. The client requires Claude Code and Python 3. Its version is independent of the Codex helper.
 
-Sync the Claude workflow and packaging script from `distribution/` to this public repository. Tag the reviewed private source first, then create the matching public tag. The workflow runs the Claude fixtures and creates a draft with the archive and SHA256SUMS. Compare the archive hash with the pin in the Hub's `priv/static/SETUP.md`, verify the extracted client, and publish the release before deploying the guide that references it.
+Sync the Claude workflow and packaging script from `distribution/` and the four reviewed client files listed in `package_claude.py` from the source repository’s `scripts/` directory. Commit them in the public repository before tagging. The workflow uses the public tag to build the archive, exercise the packaged installer and launcher, and create a draft with the archive and SHA256SUMS. Compare the archive hash with the pin in the Hub's `priv/static/SETUP.md`, verify the extracted client, and publish the release before deploying the guide that references it.
+
+To verify an existing release, run the Claude Code client release workflow manually. Choose a ref containing the matching public client and enter the published version. This rebuilds the archive and compares both files byte-for-byte with the published assets.
